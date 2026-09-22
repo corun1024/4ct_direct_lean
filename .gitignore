@@ -1,0 +1,9 @@
+.lake/
+*.olean
+*.ilean
+*.ndjson
+*.ndjson.gz
+verification/run/
+verification/*/shards/
+verification/*/red/
+*.log
