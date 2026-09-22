@@ -7,7 +7,9 @@ Lean 4 kernel with a lazy, Coq-style reduction engine; Lean's own kernel is swit
 is the point of the repository, and this file explains why.
 
 ```
-VERIFICATION_HEADLINE
+137 765 declarations exported from Lean, 137 765 accepted by lazylean, 0 rejected
+    633 reducibility checks evaluated in the kernel: 77 core-hours, 34 GB at the peak
+    fourColorTheorem depends on Classical.choice, Quot.sound, propext, and nothing else
 ```
 
 The statement is Gonthier's, clause for clause, over Mathlib's reals: a map is a partial
@@ -143,7 +145,40 @@ It then demands the verification summary.
 
 ## The verification run
 
-VERIFICATION_SECTION
+The whole development was exported with `lean4export` and checked by lazylean, twice over:
+once as a 16-shard sweep of the dependency closure of `fourColorTheorem`, and once as 633
+separate processes for the reducibility theorems, whose memory demands are too different from
+each other to share a schedule. The run below is on a rented 64-thread AMD EPYC 7B13 with
+251 GB of memory, 22 September 2026. `verification/SUMMARY.md` is the summary the run wrote,
+and `verification/ring_sizes.tsv` the per-configuration ring sizes that schedule it.
+
+| | declarations | failed | CPU | wall | peak memory |
+|---|---|---|---|---|---|
+| the closure, 16 shards | 136 499 | 0 | 0.51 h | 128 s | 1015 MB per shard |
+| the 633 reducibility checks | 1 266 | 0 | 76.94 h | 3.4 h | 34 318 MB |
+
+The reducibility cost is all in the three largest ring sizes, and it grows by roughly a factor
+of four per ring size:
+
+| ring size | configurations | total CPU | slowest | peak memory |
+|---|---|---|---|---|
+| 6 | 1 | 1 s | 1 s | 35 MB |
+| 7 | 1 | 1 s | 1 s | 38 MB |
+| 8 | 5 | 7 s | 2 s | 44 MB |
+| 9 | 8 | 30 s | 4 s | 68 MB |
+| 10 | 31 | 419 s | 18 s | 149 MB |
+| 11 | 81 | 4 543 s | 92 s | 602 MB |
+| 12 | 175 | 40 286 s | 351 s | 2 170 MB |
+| 13 | 194 | 77 835 s | 851 s | 7 426 MB |
+| 14 | 137 | 153 534 s | 1 505 s | 34 318 MB |
+
+The most expensive single configuration is `cf613`, ring size 14, at 1 505 s and 31.6 GB; the
+worst for memory is `cf281` at 34.3 GB. Those two numbers are what a scheduler has to respect:
+running the ring-14 checks more than five or six at a time on this machine would have swapped.
+
+Scheduling aside, the run is unremarkable, which is the claim being made. No declaration was
+rejected, none was declined, and the axiom listing of the exported theorem is the standard
+three. Lean's kernel never looked at any of it.
 
 ## The three kernels on the same computation
 
@@ -167,7 +202,7 @@ dropped (`LL_MEMO=0 LL_ORIG=none`), which is how `scripts/verify.sh` runs it.
 The 633 configurations are not evenly spread over that ladder: 137 of them have ring size
 14, 194 have 13 and 175 have 12, so the last three rows are nearly all of the cost. Lean's
 kernel cannot check this proof. Coq's lazy kernel would take about four core-hours, its VM a
-fraction of one, and lazylean about fifty. The gap between lazylean and Coq's lazy kernel is
+fraction of one, and lazylean took 77 on the slower-per-core machine the run below used. The gap between lazylean and Coq's lazy kernel is
 the machine's per-step constant, thunk and environment allocation and reference counting
 against an OCaml minor heap; lazylean's README has the profile.
 
@@ -188,7 +223,7 @@ default `~/lazylean/build/lazylean`) and a built
 [lean4export](https://github.com/leanprover/lean4export) at the toolchain in `lean-toolchain`
 (`LEAN4EXPORT=…`, default `~/lean4export/.lake/build/bin/lean4export`), patched with
 `scripts/hexparse_patch.py` from the lazylean repository so that it writes long `Nat` literals in
-hexadecimal. Budget about VERIFY_CPU core-hours and 190 GB of memory for the reducibility step;
+hexadecimal. Budget about 80 core-hours and 190 GB of memory for the reducibility step;
 `JOBS` and `MEMORY_GB` scale it, `SHARDS` the closure step. The summary lands in
 `verification/run/SUMMARY.md`; the committed one from the run described above is
 `verification/SUMMARY.md`.
